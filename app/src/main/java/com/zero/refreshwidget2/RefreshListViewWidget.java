@@ -5,7 +5,6 @@ import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.AbsListView;
-import android.widget.Adapter;
 import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
@@ -16,6 +15,9 @@ import android.widget.ListView;
  */
 public class RefreshListViewWidget extends ListView implements AbsListView.OnScrollListener, 
         RefreshListWidgetInterface {
+    
+    private boolean mRefreshEnabled;
+    private boolean mLoadMoreEnabled;
     
     private LinearLayout mHeaderLayout;
     private LinearLayout mFooterLayout;
@@ -69,16 +71,38 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
     
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
+        
+        switch (ev.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                mDownY = ev.getRawY();
+                break;
+            case MotionEvent.ACTION_MOVE:
+                mMoveY = ev.getRawY();
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                break;
+        }
+        
         return super.onTouchEvent(ev);
     }
+    
+    private boolean isReachHeader() {
+        return getFirstVisiblePosition() == 0;
+    }
+    
+    private boolean isReachFooter() {
+        return getLastVisiblePosition() == getCount() - 1;
+    }
+    
 
     @Override
     public void setRefreshEnabled(boolean enabled) {
-        
+        this.mRefreshEnabled = enabled;
     }
 
     @Override
     public void setLoadMoreEnabled(boolean enabled) {
-
+        this.mLoadMoreEnabled = enabled;
     }
 }
