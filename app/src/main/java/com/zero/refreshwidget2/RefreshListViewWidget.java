@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.widget.AbsListView;
 import android.widget.LinearLayout;
 import android.widget.ListAdapter;
@@ -25,6 +26,8 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
     private int mHeaderViewCount = 1;
     private int mFooterViewCount = 1;
     
+    private float mTouchSlop;
+    
     public RefreshListViewWidget(Context context) {
         super(context);
         init();
@@ -42,6 +45,10 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
     
     private void init() {
         setOnScrollListener(this);
+        mHeaderLayout = new LinearLayout(getContext());
+        mFooterLayout = new LinearLayout(getContext());
+
+        mTouchSlop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
     }
     
     public void setAdapter(ListAdapter adapter) {
