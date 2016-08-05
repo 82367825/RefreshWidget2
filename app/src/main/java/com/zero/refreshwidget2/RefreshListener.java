@@ -10,4 +10,6 @@ public interface RefreshListener {
     
     void onLoadMore();
     
+    void onScrollStateChange(int state);
+    
 }

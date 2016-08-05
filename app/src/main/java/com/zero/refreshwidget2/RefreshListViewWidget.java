@@ -4,12 +4,13 @@ import android.content.Context;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
+
+import java.sql.Ref;
 
 /**
  * @author linzewu
@@ -27,6 +28,13 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
     private int mFooterViewCount = 1;
 
     private int mCurrentState;
+    private int mCurrentScrollState;
+    
+    private RefreshListener mRefreshListener;
+    
+    public void setRefreshListener(RefreshListener refreshListener) {
+        this.mRefreshListener = refreshListener;
+    }
 
     public RefreshListViewWidget(Context context) {
         super(context);
@@ -61,7 +69,15 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
 
     private void setHeaderViewTopPadding(int topPadding) {
         if (mHeaderLayout != null) {
-            
+            mHeaderLayout.setPadding(mHeaderLayout.getLeft(), topPadding, 
+                    mHeaderLayout.getRight(), mHeaderLayout.getBottom());
+        }
+    }
+    
+    private void setFooterViewBottomPadding(int bottomPadding) {
+        if (mFooterLayout != null) {
+            mFooterLayout.setPadding(mFooterLayout.getLeft(), mFooterLayout.getTop(), 
+                    mFooterLayout.getRight(), bottomPadding);
         }
     }
     
@@ -73,7 +89,10 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
      */
     @Override
     public void onScrollStateChanged(AbsListView absListView, int scrollState) {
-        this.mCurrentState = scrollState;
+        this.mCurrentScrollState = scrollState;
+        if (mRefreshListener != null) {
+            mRefreshListener.onScrollStateChange(scrollState);
+        }
     }
 
     /**
@@ -96,12 +115,17 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
 
     @Override
     public void onScroll(AbsListView absListView, int i, int i1, int i2) {
-        if (mCurrentState == SCROLL_STATE_FLING) {
-            
-        } else if (mCurrentState == SCROLL_STATE_IDLE) {
-            
-        } else if (mCurrentState == SCROLL_STATE_TOUCH_SCROLL) {
-            
+        if (mCurrentScrollState == SCROLL_STATE_FLING) {
+            /* 快速滑动的时候,不进入任何状态 */
+        } else if (mCurrentScrollState == SCROLL_STATE_IDLE) {
+            if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachHeader()) {
+               mCurrentState = RefreshConstant.STATUS_REFRESH; 
+            } else if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachFooter()) {
+                
+            }
+            /* 处于手指滑动状态 */
+        } else if (mCurrentScrollState == SCROLL_STATE_TOUCH_SCROLL) {
+            /* 处于无手指无滑动状态 */
         }
     }
 
@@ -118,7 +142,14 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
             case MotionEvent.ACTION_MOVE:
                 mMoveY = ev.getRawY();
                 
-                if ()
+                if (mCurrentState == RefreshConstant.STATUS_NORMAL && 
+                        isReachHeader() && mMoveY - mDownY > 0) {
+                    /* 进入下拉状态 */
+                    setHeaderViewTopPadding((int) (mMoveY - mDownY));
+                } else {
+                    /* 上拉状态 */
+                    setFooterViewBottomPadding((int) (mDownY - mMoveY));
+                }
 
                 break;
             case MotionEvent.ACTION_UP:
