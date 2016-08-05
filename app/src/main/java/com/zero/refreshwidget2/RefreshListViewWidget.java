@@ -14,6 +14,7 @@ import android.widget.ListView;
 
 
 /**
+ * 下拉刷新
  * @author linzewu
  * @date 16-7-26
  */
@@ -58,6 +59,16 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
         mHeaderLayout = new LinearLayout(getContext());
         mFooterLayout = new LinearLayout(getContext());
         
+    }
+    
+    private void initHeaderLayout() {
+        this.mHeaderLayout = new LinearLayout(getContext());
+        this.addHeaderView(mHeaderLayout);
+    }
+    
+    private void initFooterLayout() {
+        this.mFooterLayout = new LinearLayout(getContext());
+        this.addFooterView(mFooterLayout);
     }
 
     public void setAdapter(ListAdapter adapter) {
