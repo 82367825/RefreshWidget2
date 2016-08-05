@@ -4,7 +4,6 @@ import android.content.Context;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.Adapter;
@@ -12,28 +11,33 @@ import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 
+
+
 /**
  * @author linzewu
  * @date 16-7-26
  */
-public class RefreshListViewWidget extends ListView implements AbsListView.OnScrollListener, 
-        RefreshListWidgetInterface {
-    
+public class RefreshListViewWidget extends ListView implements AbsListView.OnScrollListener, RefreshListWidgetInterface {
+
     private boolean mRefreshEnabled;
     private boolean mLoadMoreEnabled;
-    
+
     private LinearLayout mHeaderLayout;
     private LinearLayout mFooterLayout;
-    
+
     private int mHeaderViewCount = 1;
     private int mFooterViewCount = 1;
 
-    /**
-     * 当前状态
-     */
-    private int mCurrentState = RefreshConstant.STATUS_NORMAL;
+
+    private int mCurrentState;
+    private int mCurrentScrollState;
     
+    private RefreshListener mRefreshListener;
     
+    public void setRefreshListener(RefreshListener refreshListener) {
+        this.mRefreshListener = refreshListener;
+    }
+
     public RefreshListViewWidget(Context context) {
         super(context);
         init();
@@ -48,36 +52,39 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
         super(context, attrs, defStyleAttr);
         init();
     }
-    
+
     private void init() {
         setOnScrollListener(this);
         mHeaderLayout = new LinearLayout(getContext());
         mFooterLayout = new LinearLayout(getContext());
         
     }
-    
+
     public void setAdapter(ListAdapter adapter) {
         super.setAdapter(adapter);
     }
-    
+
     public void addHeaderView(View headerView) {
         super.addHeaderView(headerView);
     }
-    
+
     public void addFooterView(View footerView) {
         super.addFooterView(footerView);
     }
     
-    private void setHeaderLayoutTopPadding(int topPadding) {
-        mHeaderLayout.setPadding(
-                mHeaderLayout.getLeft(), topPadding, mHeaderLayout.getRight(), mHeaderLayout.getBottom()
-        );
+    
+    private void setHeaderViewTopPadding(int topPadding) {
+        if (mHeaderLayout != null) {
+            mHeaderLayout.setPadding(mHeaderLayout.getLeft(), topPadding, 
+                    mHeaderLayout.getRight(), mHeaderLayout.getBottom());
+        }
     }
     
-    private void setFooterLayoutBottomPadding(int bottomPadding) {
-        mFooterLayout.setPadding(
-                mFooterLayout.getLeft(), mFooterLayout.getTop(), mFooterLayout.getRight(), bottomPadding
-        );
+    private void setFooterViewBottomPadding(int bottomPadding) {
+        if (mFooterLayout != null) {
+            mFooterLayout.setPadding(mFooterLayout.getLeft(), mFooterLayout.getTop(), 
+                    mFooterLayout.getRight(), bottomPadding);
+        }
     }
 
     /**
@@ -87,13 +94,15 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
      * {@link Adapter#getView(int, View, ViewGroup)}.
      * @param absListView
      * @param scrollState
+     * {@link android.widget.Adapter#getView(int, View, ViewGroup)}.
      */
     @Override
     public void onScrollStateChanged(AbsListView absListView, int scrollState) {
         this.mCurrentScrollState = scrollState;
+        if (mRefreshListener != null) {
+            mRefreshListener.onScrollStateChange(scrollState);
+        }
     }
-    
-    private int mCurrentScrollState;
     
     /**
      * The view is not scrolling. Note navigating the list using the trackball counts as
@@ -112,58 +121,43 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
      */
     public static int SCROLL_STATE_FLING = 2;
 
-
-    /**
-     * Callback method to be invoked when the list or grid has been scrolled. This will be
-     * called after the scroll has completed
-     * @param view
-     * @param firstVisibleItem
-     * @param visibleItemCount
-     * @param totalItemCount
-     */
     @Override
-    public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
-        if (mCurrentScrollState == SCROLL_STATE_IDLE) {
-            
-        } else if (mCurrentScrollState == SCROLL_STATE_TOUCH_SCROLL) {
-            if (isReachHeader()) {
-                mCurrentState = RefreshConstant.STATUS_REFRESH;
-            } else if (isReachFooter()) {
-                mCurrentState = RefreshConstant.STATUS_LOAD_MORE;
+    public void onScroll(AbsListView absListView, int i, int i1, int i2) {
+        if (mCurrentScrollState == SCROLL_STATE_FLING) {
+            /* 快速滑动的时候,不进入任何状态 */
+        } else if (mCurrentScrollState == SCROLL_STATE_IDLE) {
+            if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachHeader()) {
+               mCurrentState = RefreshConstant.STATUS_REFRESH; 
+            } else if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachFooter()) {
+                
             }
-        } else if (mCurrentScrollState == SCROLL_STATE_FLING) {
-            /* 高速滑动的时候，不下拉刷新也不上拉加载 */
-            
-        }
+            /* 处于手指滑动状态 */
+        } else if (mCurrentScrollState == SCROLL_STATE_TOUCH_SCROLL) {
+            /* 处于无手指无滑动状态 */}
     }
 
     private float mDownY;
     private float mMoveY;
-
-    @Override
-    public boolean onInterceptTouchEvent(MotionEvent ev) {
-        return super.onInterceptTouchEvent(ev);
-    }
-
+    
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
-        
+
         switch (ev.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 mDownY = ev.getRawY();
                 break;
             case MotionEvent.ACTION_MOVE:
                 mMoveY = ev.getRawY();
-                
-                if (mMoveY - mDownY > 0 && (mCurrentState == RefreshConstant.STATUS_REFRESH || mCurrentState == 
-                                RefreshConstant.STATUS_RELEASE_TO_REFRESH)) {
-                    /* 正在下拉刷新 */
-                    setHeaderLayoutTopPadding((int) (mMoveY - mDownY));
-                } else if (mMoveY - mDownY <= 0 && (mCurrentState == RefreshConstant
-                        .STATUS_LOAD_MORE || mCurrentState == RefreshConstant.STATUS_RELEASE_TO_LOAD_MORE)) {
-                    /* 正在上拉加载 */
-                    setFooterLayoutBottomPadding((int) (mDownY - mMoveY));
+
+                if (mCurrentState == RefreshConstant.STATUS_NORMAL && 
+                        isReachHeader() && mMoveY - mDownY > 0) {
+                    /* 进入下拉状态 */
+                    setHeaderViewTopPadding((int) (mMoveY - mDownY));
+                } else {
+                    /* 上拉状态 */
+                    setFooterViewBottomPadding((int) (mDownY - mMoveY));
                 }
+                
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
@@ -179,26 +173,36 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
                 break;
                 
         }
-        
+
         return super.onTouchEvent(ev);
     }
-    
+
     private boolean isReachHeader() {
         return getFirstVisiblePosition() == 0;
     }
-    
+
     private boolean isReachFooter() {
         return getLastVisiblePosition() == getCount() - 1;
     }
-    
+
 
     @Override
     public void setRefreshEnabled(boolean enabled) {
         this.mRefreshEnabled = enabled;
+        if (mHeaderLayout != null && !enabled) {
+            mHeaderLayout.setVisibility(GONE);
+        } else if (mHeaderLayout != null && enabled) {
+            mHeaderLayout.setVisibility(VISIBLE);
+        }
     }
 
     @Override
     public void setLoadMoreEnabled(boolean enabled) {
         this.mLoadMoreEnabled = enabled;
+        if (mFooterLayout != null && !enabled) {
+            mFooterLayout.setVisibility(GONE);
+        } else if (mFooterLayout != null && enabled) {
+            mFooterLayout.setVisibility(VISIBLE);
+        }
     }
 }
