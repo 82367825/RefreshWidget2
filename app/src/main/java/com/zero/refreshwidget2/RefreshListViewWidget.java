@@ -1,16 +1,19 @@
 package com.zero.refreshwidget2;
 
+import android.animation.Animator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.LinearInterpolator;
 import android.widget.AbsListView;
+import android.widget.AbsListView.OnScrollListener;
 import android.widget.Adapter;
-import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
-
 
 
 /**
@@ -18,17 +21,23 @@ import android.widget.ListView;
  * @author linzewu
  * @date 16-7-26
  */
-public class RefreshListViewWidget extends ListView implements AbsListView.OnScrollListener, RefreshListWidgetInterface {
+public class RefreshListViewWidget extends ListView implements OnScrollListener, RefreshListWidgetInterface {
 
+    private static final String TAG = "RefreshListViewWidget";
+    
     private boolean mRefreshEnabled;
     private boolean mLoadMoreEnabled;
 
-    private LinearLayout mHeaderLayout;
-    private LinearLayout mFooterLayout;
+    private RefreshHeader mHeaderLayout;
+    private RefreshFooter mFooterLayout;
+    
+    private int mHeaderLayoutHeight;
+    private int mFooterLayoutHeight;
 
     private int mHeaderViewCount = 1;
     private int mFooterViewCount = 1;
 
+    private static final float PULL_SCALE = 0.5f;
 
     private int mCurrentState;
     private int mCurrentScrollState;
@@ -56,24 +65,32 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
 
     private void init() {
         setOnScrollListener(this);
-        mHeaderLayout = new LinearLayout(getContext());
-        mFooterLayout = new LinearLayout(getContext());
-        
+        mCurrentState = RefreshConstant.STATUS_NORMAL;
+        initHeaderLayout();
+        initFooterLayout();
     }
     
     private void initHeaderLayout() {
-        this.mHeaderLayout = new LinearLayout(getContext());
+        this.mHeaderLayout = new RefreshHeader(getContext());
+        RefreshConstant.measureView(mHeaderLayout);
+        this.mHeaderLayoutHeight = mHeaderLayout.getMeasuredHeight();
         this.addHeaderView(mHeaderLayout);
+        setHeaderViewTopPadding(-mHeaderLayoutHeight);
+        Log.d(TAG, "HeaderLayout Height : " + mHeaderLayoutHeight);
     }
     
     private void initFooterLayout() {
-        this.mFooterLayout = new LinearLayout(getContext());
+        this.mFooterLayout = new RefreshFooter(getContext());
+        RefreshConstant.measureView(mFooterLayout);
+        this.mFooterLayoutHeight = mFooterLayout.getMeasuredHeight();
         this.addFooterView(mFooterLayout);
+        setFooterViewBottomPadding(-mFooterLayoutHeight);
+        Log.d(TAG, "FooterLayout Height : " + mFooterLayoutHeight);
     }
 
     public void setAdapter(ListAdapter adapter) {
         super.setAdapter(adapter);
-    }
+    }   
 
     public void addHeaderView(View headerView) {
         super.addHeaderView(headerView);
@@ -83,6 +100,17 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
         super.addFooterView(footerView);
     }
     
+    public void refreshComplete() {
+        mCurrentState = RefreshConstant.STATUS_NORMAL;
+        taskCancelRefresh();
+        mHeaderLayout.onCancel();
+    } 
+    
+    public void loadMoreComplete() {
+        mCurrentState = RefreshConstant.STATUS_NORMAL;
+        taskCancelLoadMore();
+        mHeaderLayout.onCancel();
+    }
     
     private void setHeaderViewTopPadding(int topPadding) {
         if (mHeaderLayout != null) {
@@ -110,49 +138,28 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
     @Override
     public void onScrollStateChanged(AbsListView absListView, int scrollState) {
         this.mCurrentScrollState = scrollState;
+        if (scrollState == SCROLL_STATE_FLING) {
+            
+        }
         if (mRefreshListener != null) {
             mRefreshListener.onScrollStateChange(scrollState);
         }
     }
-    
-    /**
-     * The view is not scrolling. Note navigating the list using the trackball counts as
-     * being in the idle state since these transitions are not animated.
-     */
-    public static int SCROLL_STATE_IDLE = 0;
-
-    /**
-     * The user is scrolling using touch, and their finger is still on the screen
-     */
-    public static int SCROLL_STATE_TOUCH_SCROLL = 1;
-
-    /**
-     * The user had previously been scrolling using touch and had performed a fling. The
-     * animation is now coasting to a stop
-     */
-    public static int SCROLL_STATE_FLING = 2;
 
     @Override
-    public void onScroll(AbsListView absListView, int i, int i1, int i2) {
-        if (mCurrentScrollState == SCROLL_STATE_FLING) {
-            /* 快速滑动的时候,不进入任何状态 */
-        } else if (mCurrentScrollState == SCROLL_STATE_IDLE) {
-            if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachHeader()) {
-               mCurrentState = RefreshConstant.STATUS_REFRESH; 
-            } else if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachFooter()) {
-                
-            }
-            /* 处于手指滑动状态 */
-        } else if (mCurrentScrollState == SCROLL_STATE_TOUCH_SCROLL) {
-            /* 处于无手指无滑动状态 */}
+    public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+        
     }
 
     private float mDownY;
+    private float mStartMoveY;
     private float mMoveY;
     
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
-
+        if (mIsAnimRunning) {
+            return super.onTouchEvent(ev);
+        }
         switch (ev.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 mDownY = ev.getRawY();
@@ -163,29 +170,219 @@ public class RefreshListViewWidget extends ListView implements AbsListView.OnScr
                 if (mCurrentState == RefreshConstant.STATUS_NORMAL && 
                         isReachHeader() && mMoveY - mDownY > 0) {
                     /* 进入下拉状态 */
-                    setHeaderViewTopPadding((int) (mMoveY - mDownY));
-                } else {
-                    /* 上拉状态 */
-                    setFooterViewBottomPadding((int) (mDownY - mMoveY));
+                    mCurrentState = RefreshConstant.STATUS_REFRESH;
+                } else if (mCurrentState == RefreshConstant.STATUS_NORMAL && isReachFooter() && 
+                        mMoveY - mDownY <= 0) {
+                    /* 进入上拉状态 */
+                    mCurrentState = RefreshConstant.STATUS_LOAD_MORE;
+                } else if (mCurrentState == RefreshConstant.STATUS_REFRESH || mCurrentState == 
+                        RefreshConstant.STATUS_RELEASE_TO_REFRESH) {
+                    /* 正在下拉状态 */
+                    if (mMoveY - mDownY > 0) {
+                        if ((mMoveY - mDownY) * PULL_SCALE > mHeaderLayoutHeight) {
+                            mCurrentState = RefreshConstant.STATUS_RELEASE_TO_REFRESH;
+                            mHeaderLayout.onReleaseToRefresh();
+                            setHeaderViewTopPadding((int) 
+                                    (((mMoveY - mDownY) * PULL_SCALE - mHeaderLayoutHeight) * PULL_SCALE));
+                            Log.d(TAG, "Header Top : " + mHeaderLayout.getPaddingTop());
+                            Log.d(TAG, "CurrentState : Release to Refresh");
+                        } else {
+                            mCurrentState = RefreshConstant.STATUS_REFRESH;
+                            mHeaderLayout.onRefresh();
+                            setHeaderViewTopPadding((int) (-mHeaderLayoutHeight + (mMoveY - mDownY) * PULL_SCALE));
+                            Log.d(TAG, "Header Top : " + mHeaderLayout.getPaddingTop());
+                            Log.d(TAG, "CurrentState : Refresh");
+                        }
+                    }
+                } else if (mCurrentState == RefreshConstant.STATUS_LOAD_MORE || mCurrentState == 
+                        RefreshConstant.STATUS_RELEASE_TO_LOAD_MORE) {
+                    /* 正在上拉状态 */
+                    if (mMoveY - mDownY <= 0) {
+                        if ((mDownY - mMoveY) * PULL_SCALE > mFooterLayoutHeight) {
+                            mCurrentState = RefreshConstant.STATUS_RELEASE_TO_LOAD_MORE;
+                            mFooterLayout.onReleaseToLoadMore();
+                            setFooterViewBottomPadding((int)
+                                    (((mDownY - mMoveY) * PULL_SCALE - mFooterLayoutHeight) * PULL_SCALE));
+                            Log.d(TAG, "CurrentState : Load more");
+                        } else {
+                            mCurrentState = RefreshConstant.STATUS_LOAD_MORE;
+                            mFooterLayout.onLoadMore();
+                            setFooterViewBottomPadding((int) (-mFooterLayoutHeight + (mDownY - mMoveY) * PULL_SCALE));
+                            Log.d(TAG, "CurrentState : Release to load more");
+                        }
+                    }
                 }
-                
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 if (mCurrentState == RefreshConstant.STATUS_REFRESH) {
-                    
+                    mCurrentState = RefreshConstant.STATUS_NORMAL;
+                    taskCancelRefresh();
                 } else if (mCurrentState == RefreshConstant.STATUS_RELEASE_TO_REFRESH) {
-                    
+                    mCurrentState = RefreshConstant.STATUS_REFRESH_ING;
+                    mHeaderLayout.onRefreshIng();
+                    taskRefresh();
                 } else if (mCurrentState == RefreshConstant.STATUS_LOAD_MORE) {
-                    
+                    mCurrentState = RefreshConstant.STATUS_NORMAL;
+                    taskCancelLoadMore();
                 } else if (mCurrentState == RefreshConstant.STATUS_RELEASE_TO_LOAD_MORE) {
-                    
+                    mCurrentState = RefreshConstant.STATUS_LOAD_MORE_ING;
+                    mFooterLayout.onLoadMoreIng();
+                    taskLoadMore();
                 }
                 break;
                 
         }
 
         return super.onTouchEvent(ev);
+    }
+    
+    private boolean mIsAnimRunning = false;
+    private static final long ANIM_RUNNING_DURATION = 500;
+    
+    private void taskRefresh() {
+        mIsAnimRunning = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(mHeaderLayout.getPaddingTop(), 0);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                setHeaderViewTopPadding((int) animation.getAnimatedValue());
+            }
+        });
+        valueAnimator.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mIsAnimRunning = false;
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+
+            }
+        });
+        valueAnimator.setDuration(ANIM_RUNNING_DURATION);
+        valueAnimator.setInterpolator(new LinearInterpolator());
+        valueAnimator.start();
+    }
+    
+    private void taskCancelRefresh() {
+        mIsAnimRunning = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(mHeaderLayout.getPaddingTop(), 
+                -mHeaderLayoutHeight);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+                setHeaderViewTopPadding((int) value);
+            }
+        });
+        valueAnimator.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mIsAnimRunning = false;
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+
+            }
+        });
+        valueAnimator.setDuration(ANIM_RUNNING_DURATION);
+        valueAnimator.setInterpolator(new LinearInterpolator());
+        valueAnimator.start();
+    }
+    
+    private void taskLoadMore() {
+        mIsAnimRunning = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(mFooterLayout.getPaddingBottom(), 0);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+                setFooterViewBottomPadding((int) value);
+            }
+        });
+        valueAnimator.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mIsAnimRunning = false;
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+
+            }
+        });
+        valueAnimator.setDuration(ANIM_RUNNING_DURATION);
+        valueAnimator.setInterpolator(new LinearInterpolator());
+        valueAnimator.start();
+    }
+    
+    private void taskCancelLoadMore() {
+        mIsAnimRunning = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(mFooterLayout.getPaddingBottom(),
+                -mFooterLayoutHeight);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+                setFooterViewBottomPadding((int) value);
+            }
+        });
+        valueAnimator.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mIsAnimRunning = false;
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+
+            }
+        });
+        valueAnimator.setDuration(ANIM_RUNNING_DURATION);
+        valueAnimator.setInterpolator(new LinearInterpolator());
+        valueAnimator.start();
     }
 
     private boolean isReachHeader() {

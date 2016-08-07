@@ -10,6 +10,7 @@ import android.widget.TextView;
 
 import com.zero.refreshwidget2.R;
 import com.zero.refreshwidget2.RefreshListViewWidget;
+import com.zero.refreshwidget2.RefreshListener;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.List;
 public class MainActivity extends Activity {
 
     private RefreshListViewWidget mRefreshListViewWidget;
+    private RefreshAdapter mRefreshAdapter;
     
     private List<String> mRefreshList;
     
@@ -29,20 +31,63 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         
+        init();
+        
         mRefreshListViewWidget = (RefreshListViewWidget) findViewById(R.id.refresh_list);
+        mRefreshAdapter = new RefreshAdapter();
+        mRefreshListViewWidget.setAdapter(mRefreshAdapter);
+        mRefreshListViewWidget.setRefreshListener(new RefreshListener() {
+            @Override
+            public void onRefresh() {
+                refreshData();
+            }
+
+            @Override
+            public void onLoadMore() {
+                loadMoreData();
+            }
+
+            @Override
+            public void onScrollStateChange(int state) {
+
+            }
+        });
     }
     
     
     private void init() {
         mRefreshList = new ArrayList<>();
+        for (int i = 0 ; i < 16; i++) {
+            mRefreshList.add("text item" + (i + 1));
+        }
     }
     
     private void refreshData() {
-        
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                mRefreshListViewWidget.refreshComplete();
+            }
+        }).start();
     }
     
     private void loadMoreData() {
-        
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                mRefreshListViewWidget.loadMoreComplete();
+            }
+        }).start();
     }
     
     private class RefreshAdapter extends BaseAdapter {
@@ -64,16 +109,21 @@ public class MainActivity extends Activity {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
+            RefreshHolder refreshHolder = null;
             if (convertView == null) {
                 convertView = LayoutInflater.from(MainActivity.this).inflate(R.layout.refresh_item, null);
-                TextView textView = (TextView) convertView.findViewById(R.id.text);
-                textView.setText(mRefreshList.get(position));
+                refreshHolder = new RefreshHolder();
+                refreshHolder.mTextView = (TextView) convertView.findViewById(R.id.text);
+                convertView.setTag(refreshHolder);
+            } else {
+                refreshHolder = (RefreshHolder) convertView.getTag();
             }
+            refreshHolder.mTextView.setText(mRefreshList.get(position));
             return convertView;
         }
     }
     
     private class RefreshHolder {
-        
+        public TextView mTextView;
     }
 }
