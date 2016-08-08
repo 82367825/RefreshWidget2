@@ -93,7 +93,12 @@ public class RefreshHeader extends LinearLayout implements RefreshHeaderInterfac
     @Override
     public void onCancel() {
         if (mValueAnimator != null && mValueAnimator.isRunning()) {
-            mValueAnimator.cancel();
+            post(new Runnable() {
+                @Override
+                public void run() {
+                    mValueAnimator.cancel();
+                }
+            });
         }    
     }
 

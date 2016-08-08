@@ -3,6 +3,8 @@ package com.zero.refreshwidget2;
 import android.animation.Animator;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.os.Handler;
+import android.test.FlakyTest;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -12,6 +14,7 @@ import android.view.animation.LinearInterpolator;
 import android.widget.AbsListView;
 import android.widget.AbsListView.OnScrollListener;
 import android.widget.Adapter;
+import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 
@@ -33,11 +36,8 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
     
     private int mHeaderLayoutHeight;
     private int mFooterLayoutHeight;
-
-    private int mHeaderViewCount = 1;
-    private int mFooterViewCount = 1;
-
-    private static final float PULL_SCALE = 0.5f;
+    
+    private static final float PULL_SCALE = 0.65f;
 
     private int mCurrentState;
     private int mCurrentScrollState;
@@ -102,27 +102,27 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
     
     public void refreshComplete() {
         mCurrentState = RefreshConstant.STATUS_NORMAL;
-        taskCancelRefresh();
+        taskCancelRefreshMainThread();
         mHeaderLayout.onCancel();
     } 
     
     public void loadMoreComplete() {
         mCurrentState = RefreshConstant.STATUS_NORMAL;
-        taskCancelLoadMore();
+        taskCancelLoadMoreMainThread();
         mHeaderLayout.onCancel();
     }
     
     private void setHeaderViewTopPadding(int topPadding) {
         if (mHeaderLayout != null) {
-            mHeaderLayout.setPadding(mHeaderLayout.getLeft(), topPadding, 
-                    mHeaderLayout.getRight(), mHeaderLayout.getBottom());
+            mHeaderLayout.setPadding(mHeaderLayout.getPaddingLeft(), topPadding, 
+                    mHeaderLayout.getPaddingRight(), mHeaderLayout.getPaddingBottom());
         }
     }
     
     private void setFooterViewBottomPadding(int bottomPadding) {
         if (mFooterLayout != null) {
-            mFooterLayout.setPadding(mFooterLayout.getLeft(), mFooterLayout.getTop(), 
-                    mFooterLayout.getRight(), bottomPadding);
+            mFooterLayout.setPadding(mFooterLayout.getPaddingLeft(), mFooterLayout.getPaddingTop(), 
+                    mFooterLayout.getPaddingRight(), bottomPadding);
         }
     }
 
@@ -152,7 +152,6 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
     }
 
     private float mDownY;
-    private float mStartMoveY;
     private float mMoveY;
     
     @Override
@@ -166,7 +165,7 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
                 break;
             case MotionEvent.ACTION_MOVE:
                 mMoveY = ev.getRawY();
-
+                
                 if (mCurrentState == RefreshConstant.STATUS_NORMAL && 
                         isReachHeader() && mMoveY - mDownY > 0) {
                     /* 进入下拉状态 */
@@ -217,68 +216,47 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
             case MotionEvent.ACTION_CANCEL:
                 if (mCurrentState == RefreshConstant.STATUS_REFRESH) {
                     mCurrentState = RefreshConstant.STATUS_NORMAL;
-                    taskCancelRefresh();
+                    taskCancelRefreshMainThread();
                 } else if (mCurrentState == RefreshConstant.STATUS_RELEASE_TO_REFRESH) {
                     mCurrentState = RefreshConstant.STATUS_REFRESH_ING;
                     mHeaderLayout.onRefreshIng();
-                    taskRefresh();
+                    taskRefreshMainThread();
+                    if (mRefreshListener != null) {
+                        mRefreshListener.onRefresh();
+                    }
                 } else if (mCurrentState == RefreshConstant.STATUS_LOAD_MORE) {
                     mCurrentState = RefreshConstant.STATUS_NORMAL;
-                    taskCancelLoadMore();
+                    taskCancelLoadMoreMainThread();
                 } else if (mCurrentState == RefreshConstant.STATUS_RELEASE_TO_LOAD_MORE) {
                     mCurrentState = RefreshConstant.STATUS_LOAD_MORE_ING;
                     mFooterLayout.onLoadMoreIng();
-                    taskLoadMore();
+                    taskLoadMoreMainThread();
+                    if (mRefreshListener != null) {
+                        mRefreshListener.onLoadMore();
+                    }
                 }
                 break;
-                
         }
-
         return super.onTouchEvent(ev);
     }
+    
+    private Handler mMainThreadHandler = new Handler();
     
     private boolean mIsAnimRunning = false;
     private static final long ANIM_RUNNING_DURATION = 500;
     
+    private void taskRefreshMainThread() {
+        mMainThreadHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                taskRefresh();
+            }
+        });
+    }
+    
     private void taskRefresh() {
         mIsAnimRunning = true;
         ValueAnimator valueAnimator = ValueAnimator.ofFloat(mHeaderLayout.getPaddingTop(), 0);
-        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator animation) {
-                setHeaderViewTopPadding((int) animation.getAnimatedValue());
-            }
-        });
-        valueAnimator.addListener(new Animator.AnimatorListener() {
-            @Override
-            public void onAnimationStart(Animator animation) {
-                
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                mIsAnimRunning = false;
-            }
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-
-            }
-
-            @Override
-            public void onAnimationRepeat(Animator animation) {
-
-            }
-        });
-        valueAnimator.setDuration(ANIM_RUNNING_DURATION);
-        valueAnimator.setInterpolator(new LinearInterpolator());
-        valueAnimator.start();
-    }
-    
-    private void taskCancelRefresh() {
-        mIsAnimRunning = true;
-        ValueAnimator valueAnimator = ValueAnimator.ofFloat(mHeaderLayout.getPaddingTop(), 
-                -mHeaderLayoutHeight);
         valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -310,6 +288,66 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
         valueAnimator.setDuration(ANIM_RUNNING_DURATION);
         valueAnimator.setInterpolator(new LinearInterpolator());
         valueAnimator.start();
+    }
+    
+    private void taskCancelRefreshMainThread() {
+        mMainThreadHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                taskCancelRefresh();     
+            }
+        });
+    }
+    
+    private void taskCancelRefresh() {
+        mIsAnimRunning = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(mHeaderLayout.getPaddingTop(), 
+                -mHeaderLayoutHeight);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+                setHeaderViewTopPadding((int) value);
+            }
+        });
+        valueAnimator.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mIsAnimRunning = false;
+                if (mHeaderLayout != null) {
+                    setHeaderViewTopPadding(-mHeaderLayoutHeight);
+                    /* 刷新完成或者取消后，会有一定距离的偏移，设置位置使之复位 */
+                    setSelection(1);
+                }
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+
+            }
+        });
+        valueAnimator.setDuration(ANIM_RUNNING_DURATION);
+        valueAnimator.setInterpolator(new LinearInterpolator());
+        valueAnimator.start();
+    }
+    
+    private void taskLoadMoreMainThread() {
+        mMainThreadHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                taskLoadMore();   
+            }
+        });
     }
     
     private void taskLoadMore() {
@@ -348,6 +386,15 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
         valueAnimator.start();
     }
     
+    private void taskCancelLoadMoreMainThread() {
+        mMainThreadHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                taskCancelLoadMore();
+            }
+        });
+    }
+    
     private void taskCancelLoadMore() {
         mIsAnimRunning = true;
         ValueAnimator valueAnimator = ValueAnimator.ofFloat(mFooterLayout.getPaddingBottom(),
@@ -368,6 +415,12 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
             @Override
             public void onAnimationEnd(Animator animation) {
                 mIsAnimRunning = false;
+                mCurrentState = RefreshConstant.STATUS_NORMAL;
+                if (mFooterLayout != null) {
+                    setFooterViewBottomPadding(-mFooterLayoutHeight);
+                    /* 刷新完成或者取消后，会有一定距离的偏移，设置位置使之复位 */
+                    setSelection(getLastVisiblePosition());
+                }
             }
 
             @Override
@@ -384,6 +437,7 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
         valueAnimator.setInterpolator(new LinearInterpolator());
         valueAnimator.start();
     }
+    
 
     private boolean isReachHeader() {
         return getFirstVisiblePosition() == 0;

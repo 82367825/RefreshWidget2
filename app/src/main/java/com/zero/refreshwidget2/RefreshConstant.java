@@ -24,7 +24,7 @@ public class RefreshConstant {
     public static void measureView(View view) {
         ViewGroup.LayoutParams params = view.getLayoutParams();
         if (params == null) {
-            params = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         }
 
         int childWidthSpec = ViewGroup.getChildMeasureSpec(0, 0 + 0, params.width);

@@ -86,7 +86,12 @@ public class RefreshFooter extends LinearLayout implements RefreshFooterInterfac
     @Override
     public void onCancel() {
         if (mValueAnimator != null && mValueAnimator.isRunning()) {
-            mValueAnimator.cancel();
+            post(new Runnable() {
+                @Override
+                public void run() {
+                    mValueAnimator.cancel();
+                }
+            });
         }
     }
 
