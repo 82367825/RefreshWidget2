@@ -36,7 +36,11 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
     
     private int mHeaderLayoutHeight;
     private int mFooterLayoutHeight;
-    
+
+    /**
+     * 下拉距离比例 （0-1）
+     * 值越小，下拉距离越大
+     */
     private static final float PULL_SCALE = 0.65f;
 
     private int mCurrentState;
@@ -142,7 +146,7 @@ public class RefreshListViewWidget extends ListView implements OnScrollListener,
             
         }
         if (mRefreshListener != null) {
-            mRefreshListener.onScrollStateChange(scrollState);
+            mRefreshListener.onScrollStateChange(mCurrentScrollState);
         }
     }
 
