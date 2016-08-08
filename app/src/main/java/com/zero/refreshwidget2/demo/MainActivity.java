@@ -5,8 +5,10 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.zero.refreshwidget2.R;
 import com.zero.refreshwidget2.RefreshListViewWidget;
@@ -52,13 +54,21 @@ public class MainActivity extends Activity {
 
             }
         });
+        mRefreshListViewWidget.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                Toast.makeText(MainActivity.this, String.valueOf(parent.getAdapter().getItem(position)), 
+                        Toast.LENGTH_SHORT)
+                        .show();
+            }
+        });
     }
     
     
     private void init() {
         mRefreshList = new ArrayList<>();
         for (int i = 0 ; i < 16; i++) {
-            mRefreshList.add("text item" + (i + 1));
+            mRefreshList.add("text item" + i);
         }
     }
     
